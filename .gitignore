@@ -1,5 +1,5 @@
 __pycache__
-env-pizza
-routes/__pycache__
-
-
+pizza-app-venv
+rough.py
+.env
+.vscode
