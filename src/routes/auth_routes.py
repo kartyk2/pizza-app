@@ -1,14 +1,25 @@
 from typing import List
-from fastapi import APIRouter, HTTPException, status
-from src.schemas.user_schema import User, UserView, UserUpdateSchema
+from fastapi import (APIRouter,
+                    HTTPException, 
+                    status,
+                    Depends)
+
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from sqlalchemy import update
-from fastapi import Depends
 from src.connection.connection import get_db
 from src.models.models import UserDetails
-import re
-import uuid
+from passlib.hash import pbkdf2_sha256 as hasing_algorithm
+from jwt import encode, decode
 
+from dotenv import load_dotenv
+from os import environ
+
+load_dotenv()
+
+SECRET = environ.get("SECRET_KEY")
+ALGORITHM= environ.get("ALGORITHM")
+
+from src.schemas.auth_schema import LoginSchema
 
 auth_router = APIRouter(prefix= "/auth")
 
@@ -18,166 +29,40 @@ async def auth_root():
         __name__: "Router Works Fine"
     }
 
-class AuthActions:
-    def __init__(self, db: Session) -> None:
-        self.db = db
-    
-    def add_to_db(self, mapping_object: UserDetails):
-        try:
-            self.db.add(mapping_object)
-            self.db.commit()
-            return {
-                "Status": "Added Sucessfully"
-            }
-        except Exception as error:
-            raise error
-        
-    
-    def json_to_mapping(self, object: User):
-        try:
-            return UserDetails(object.model_dump())
-
-        except Exception as error:
-            raise error
-    
-
-    def check_if_already_exists(self, user:User):
-        try:
-            query_user = self.db.query(UserDetails).filter(UserDetails.email==user.email).first()
-            if query_user:
-                raise HTTPException(status_code= status.HTTP_409_CONFLICT, detail= "Duplicate Entry, email exists")
-            
-            query_user = self.db.query(UserDetails).filter(UserDetails.username==user.username).first()
-            if query_user:
-                raise HTTPException(status_code= status.HTTP_409_CONFLICT, detail= "Duplicate Entry, username exists")
-        
-        except Exception as error:
-            raise error
-            
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-    def is_valid_email(self, email: str) -> bool:
-        # Regular expression pattern for validating email addresses
-        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        
-        # Use re.match() to check if the email matches the pattern
-        if re.match(email_pattern, email):
-            return True
-        else:
-            return False
+# Endpoint to get an access token (simulated for the example)
+@auth_router.post("/token")
+async def login(login_details: LoginSchema, db: Session = Depends(get_db)):
 
+    _user = db.query(UserDetails).filter(
+        UserDetails.username == login_details.username
+    ).first()
 
-    def find_one_entry(self, id: uuid.UUID):
-        try:
-            user = self.db.query(UserDetails).filter(UserDetails.id == id).first()
-            if not user:
-                raise HTTPException(status_code= status.HTTP_404_NOT_FOUND, detail="ID does not exist")
-            
-            return user
-        
-        except HTTPException as error:
-            raise error
-
-    def update_schema_to_JSON(self, schemaObject: UserUpdateSchema):
-        # Build the update statement dynamically based on provided fields
-        try:
-            stmt_data = {}
-            for field, value in schemaObject.model_dump().items():
-                if value is not None:
-                    stmt_data[field] = value
-            
-            return stmt_data
-
-        except Exception as error:
-            raise error  
-          
-""" 
-
-# ------------------------- ROUTES ---------------------------------------
-
-
-"""
-        
-
-@auth_router.post("/create_user", response_model= UserView)
-async def create_user(user: User, db: Session = Depends(get_db)):
-    try:
-        _user = AuthActions(db= db)
-        
-        if not _user.is_valid_email(user.email):
-            raise HTTPException(status_code= status.HTTP_400_BAD_REQUEST, detail="Incorrect email")
-        
-        _user.check_if_already_exists(user)
-
-        db_user = _user.json_to_mapping(user)
-        result = _user.add_to_db(db_user)
-
-        return result
-    
-    except Exception as error:
-        raise error
-
-
-
-@auth_router.get("/all_users", response_model= List[UserView])
-async def fetch_users(db: Session = Depends(get_db)):
-    try:
-        _user = AuthActions(db= db)
-    
-        result = db.query(UserDetails).all()
-        return result
-    except Exception as error:
-        raise error
-
-
-@auth_router.get("/user/{id}", response_model= UserView)
-async def fetch_user(id: uuid.UUID, db: Session = Depends(get_db)):
-    try:
-        _user = AuthActions(db= db)
-    
-        result = _user.find_one_entry(id= id)
-        return result
-    except Exception as error:
-        raise error
-
-
-
-@auth_router.delete("/delete_user/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: uuid.UUID, db: Session = Depends(get_db)):
-
-    _user = db.query(UserDetails).filter(UserDetails.id == user_id).first()
     if not _user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Such user Exists")
-
-    try:
-        db.delete(_user)
-        db.commit()
-    except Exception as error:
-        db.rollback()
-        raise error
-
-
-from sqlalchemy import update
-
-@auth_router.put("/update_user/{id}", status_code=status.HTTP_202_ACCEPTED)
-async def update_user(id: uuid.UUID, updateDetails: UserUpdateSchema, db: Session = Depends(get_db)):
-    try:
-        _user = AuthActions(db=db)
-        db_user = _user.find_one_entry(id=id)
-
-        stmt_data = _user.update_schema_to_JSON(updateDetails)
-        # Build the update statement dynamically based on provided fields
-
-        stmt = (
-            update(UserDetails)
-            .where(UserDetails.id == id)
-            .values(stmt_data)
+        raise HTTPException(status_code= status.HTTP_404_NOT_FOUND, detail= f"No user with username {login_details.username}")
+    
+    hash = _user.password
+    verify_password = hasing_algorithm.verify(login_details.password, hash= hash)
+    # In a real scenario, you would authenticate the user and generate a proper access token
+    
+    if verify_password:
+        data_for_payload = dict(
+            sub= login_details.username 
         )
 
-        db.execute(stmt)
-        db.commit()
-        
-    except HTTPException as error:
-        db.rollback()
-        raise error
+        token = encode(data_for_payload, key= SECRET, algorithm= ALGORITHM)
+        return {"access_token": token, "token_type": "bearer"}
+
+    else:
+        raise HTTPException(status_code= status.HTTP_401_UNAUTHORIZED, detail="Wrong Password")
+# Protected endpoint that requires a valid access token
+@auth_router.get("/items/")
+async def read_items(token: str = Depends(oauth2_scheme)):
+    # The token parameter is injected by the dependency oauth2_scheme
+    
+    payload = decode(token, SECRET, algorithms= [ALGORITHM])
+    return {"message": "Access granted", "token": payload}
+
 

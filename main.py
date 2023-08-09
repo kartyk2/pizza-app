@@ -25,26 +25,8 @@ app.include_router(test_router)
 async def start_up():
     print("App Started ------------------------------------", datetime.now())
     return {
-    }
+    }     
 
 
-
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-
-# Endpoint to get an access token (simulated for the example)
-@app.post("/token")
-async def get_token():
-    # In a real scenario, you would authenticate the user and generate a proper access token
-    token = "That's Your Token"
-    return {"access_token": token, "token_type": "bearer"}
-
-
-# Protected endpoint that requires a valid access token
-@app.get("/items/")
-async def read_items(token: Annotated[str, Depends(oauth2_scheme)]):
-    # The token parameter is injected by the dependency oauth2_scheme
-    return {"message": "Access granted", "token": token}
 
 

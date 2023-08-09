@@ -1,13 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
 class User(BaseModel):
     username: str
-    email: str
-    password: str
-    is_active: Optional[bool] = False
-    is_admin: Optional[bool] = False
+    email: str = Field(pattern= r'^[\w\.-]+@[\w\.-]+\.\w+$', examples= ["jhon.doe@email.com"])
+    password: str = Field(min_length= 8)
+    is_active: bool | None = False
+    is_admin: bool | None = False
 
 
 class UserView(BaseModel):
@@ -15,8 +15,10 @@ class UserView(BaseModel):
     email: str
 
 class UserUpdateSchema(BaseModel):
-    username: Optional[str] = None
-    email: Optional[str] = None
-    password: Optional[str] = None
-    is_active: Optional[bool] = None
-    is_admin: Optional[bool] = None
+    username: str | None = None
+    email: str | None = Field(pattern= r'^[\w\.-]+@[\w\.-]+\.\w+$', examples= ["jhon.doe@email.com"], default= None)
+    password: str | None = Field(min_length= 8, default= None)
+    is_active: bool | None = False
+    is_admin: bool | None = False
+
+    
